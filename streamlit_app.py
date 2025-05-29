@@ -124,3 +124,4 @@ if st.button("🔄 Reset Session"):
     st.session_state.turn_counter = 0
     st.session_state.diagnosis = None
     st.experimental_rerun()
+
