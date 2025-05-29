@@ -1,10 +1,8 @@
 import streamlit as st
 import requests
 
-# --- Config ---
-st.set_page_config(page_title="Vending Machine Chatbot", layout="centered")
-HF_TOKEN = "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"  # Replace this securely
-
+# --- Load HF Token from secrets ---
+HF_TOKEN = st.secrets["api"]["hf_token"]
 HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
 
 # --- Models ---
@@ -19,11 +17,10 @@ if "turn_counter" not in st.session_state:
 if "diagnosis" not in st.session_state:
     st.session_state.diagnosis = None
 
-
 # --- Functions ---
 
 def ask_qwen_model(user_input):
-    """Send message to Qwen model"""
+    """Call Qwen model via Hugging Face Inference API with error handling."""
     history = "\n".join([f"Customer: {msg}" for msg in st.session_state.chat_history])
     prompt = f"""You are a helpful vending machine support assistant.
 Only output one natural follow-up question to clarify the user's problem.
@@ -37,12 +34,23 @@ Assistant:"""
         headers=HEADERS,
         json={"inputs": prompt}
     )
-    result = response.json()
-    return result[0]["generated_text"].replace(prompt, "").strip() if isinstance(result, list) else str(result)
+
+    if response.status_code != 200:
+        st.error(f"❌ Qwen model error: {response.status_code}")
+        st.text(response.text)
+        return "⚠️ Qwen model unavailable. Please try again later."
+
+    try:
+        result = response.json()
+        return result[0]["generated_text"].replace(prompt, "").strip() if isinstance(result, list) else str(result)
+    except Exception:
+        st.error("❌ Failed to parse Qwen response.")
+        st.text(response.text)
+        return "⚠️ Invalid model output."
 
 
 def ask_mbart_model(convo_text):
-    """Send full conversation to MBART model"""
+    """Call MBART model for JSON diagnosis."""
     prompt = f"""
 You are an AI assistant for vending machine diagnostics.
 
@@ -76,11 +84,21 @@ Conversation:
         headers=HEADERS,
         json={"inputs": prompt}
     )
-    return response.json()
 
+    if response.status_code != 200:
+        st.error(f"❌ MBART model error: {response.status_code}")
+        st.text(response.text)
+        return {"error": "MBART model failed."}
+
+    try:
+        return response.json()
+    except Exception:
+        st.error("❌ Failed to parse MBART response.")
+        st.text(response.text)
+        return {"error": "Invalid MBART output."}
 
 # --- UI ---
-
+st.set_page_config(page_title="🤖 Vending Chatbot", layout="centered")
 st.title("🤖 Vending Machine Diagnostic Chatbot")
 st.markdown("Ask in English or German. After 3 messages, a diagnosis is generated.")
 
